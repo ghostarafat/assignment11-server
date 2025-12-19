@@ -116,6 +116,59 @@ async function run() {
     //     res.status(500).json({ message: error.message });
     //   }
     // });
+    app.post("/users", async (req, res) => {
+      try {
+        const userData = req.body;
+        userData.created_at = new Date().toString();
+        userData.last_loggedIn = new Date().toString();
+
+        if (!userData.role) {
+          userData.role = "student";
+        }
+
+        const query = { email: userData.email };
+        const alreadyExists = await usersCollection.findOne(query);
+
+        if (alreadyExists) {
+          const result = await usersCollection.updateOne(query, {
+            $set: { last_loggedIn: new Date().toString() },
+          });
+          return res.send(result);
+        }
+
+        const result = await usersCollection.insertOne(userData);
+        res.send(result);
+      } catch (error) {
+        res.status(500).json({ message: error.message });
+      }
+    });
+    // app.post("/users", async (req, res) => {
+    //   try {
+    //     const userData = req.body;
+
+    //     userData.created_at = new Date().toString();
+    //     userData.last_loggedIn = new Date().toString();
+
+    //     if (!userData.role) {
+    //       userData.role = "student";
+    //     }
+
+    //     const query = { email: userData.email };
+    //     const alreadyExists = await usersCollection.findOne(query);
+
+    //     if (alreadyExists) {
+    //       const result = await usersCollection.updateOne(query, {
+    //         $set: { last_loggedIn: new Date().toString() },
+    //       });
+    //       return res.send(result);
+    //     }
+
+    //     const result = await usersCollection.insertOne(userData);
+    //     res.send(result);
+    //   } catch (error) {
+    //     res.status(500).json({ message: error.message });
+    //   }
+    // });
 
     // *********************************************//
     // // *********************************************//
