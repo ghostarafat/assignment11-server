@@ -539,6 +539,139 @@ async function run() {
       res.send(result);
     });
 
+    // *******************************************
+    // ************ Payments apis ********************
+    // *********************************************//
+
+    app.post("/create-checkout-session", async (req, res) => {
+      const paymentInfo = req.body;
+      console.log(paymentInfo);
+
+      const { price, tuitionId, tutorEmail, tutorName, studentEmail, subject } =
+        paymentInfo;
+
+      if (!price || !tuitionId) {
+        return res.status(400).send({ message: "Invalid payment data" });
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        customer_email: studentEmail,
+        line_items: [
+          {
+            price_data: {
+              currency: "usd",
+              product_data: {
+                name: `Tuition Payment - ${subject}`,
+                description: `Tutor: ${tutorName}`,
+              },
+              unit_amount: Math.round(price * 100),
+            },
+            quantity: 1,
+          },
+        ],
+
+        mode: "payment",
+
+        metadata: {
+          tuitionId,
+          tutorEmail,
+          studentEmail,
+          subject,
+        },
+
+        success_url: `${process.env.CLIENT_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${process.env.CLIENT_DOMAIN}/dashboard/applied-tutors`,
+      });
+
+      res.send({ url: session.url });
+    });
+
+    app.post("/payment-success", async (req, res) => {
+      try {
+        const { sessionId } = req.body;
+
+        // Retrieve Stripe checkout session
+        const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+        const transactionId = session.payment_intent;
+
+        // Check if payment already exists
+        const existingPayment = await paymentsCollection.findOne({
+          transactionId,
+        });
+
+        if (existingPayment) {
+          return res.send({
+            message: "already exists",
+            transactionId,
+          });
+        }
+
+        // Extract metadata
+        const { tuitionId, tutorEmail, studentEmail, subject } =
+          session.metadata;
+
+        // Only continue if payment is successful
+        if (session.payment_status === "paid") {
+          // Update tuition/application status
+          const updateResult = await applicationsCollection.updateOne(
+            { _id: new ObjectId(tuitionId) },
+            {
+              $set: {
+                status: "paid",
+              },
+            }
+          );
+
+          // Prepare payment object
+          const paymentInfo = {
+            tuitionId,
+            tutorEmail,
+            studentEmail,
+            subject,
+            transactionId,
+            amount: session.amount_total / 100,
+            currency: session.currency,
+            paymentStatus: session.payment_status,
+            paidAt: new Date(),
+          };
+
+          // Insert payment record
+          const paymentInsert = await paymentsCollection.insertOne(paymentInfo);
+
+          // Response like your first code
+          return res.send({
+            success: true,
+            modifyApplication: updateResult,
+            transactionId,
+            paymentInfo: paymentInsert,
+          });
+        }
+
+        // If session not paid
+        res.send({ success: false });
+      } catch (error) {
+        console.error("Payment Success Error:", error);
+        res.status(500).send({
+          success: false,
+          message: "Payment verification failed",
+        });
+      }
+    });
+
+    app.get("/payment", verifyJWT, async (req, res) => {
+      const email = req.tokenEmail;
+      // console.log("payment  email ----------->", email);
+
+      const result = await paymentsCollection
+        .find({
+          studentEmail: email,
+        })
+        .toArray();
+      res.send(result);
+    });
+
     // *********************************************//
     // // *********************************************//
     // // *********************************************//
