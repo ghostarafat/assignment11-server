@@ -210,6 +210,50 @@ async function run() {
       }
     });
 
+    //user get by role
+
+    app.get("/user/role", verifyJWT, async (req, res) => {
+      const result = await usersCollection.findOne({ email: req.tokenEmail });
+
+      res.send({ role: result?.role });
+    });
+    app.get("/tutors", async (req, res) => {
+      try {
+        const tutors = await usersCollection.find({ role: "tutor" }).toArray();
+
+        res.send(tutors);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ error: "Failed to fetch tutors" });
+      }
+    });
+    app.get("/latest-tutors", async (req, res) => {
+      try {
+        const tutors = await usersCollection
+          .find({ role: "tutor" })
+          .sort({ created_at: -1 })
+          .limit(6)
+          .toArray();
+
+        res.send(tutors);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ error: "Failed to fetch tutors" });
+      }
+    });
+    app.get("/tutors/:id", async (req, res) => {
+      const id = req.params.id;
+
+      try {
+        const tutors = await usersCollection.findOne({ _id: new ObjectId(id) });
+
+        res.send(tutors);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ error: "Failed to fetch tutors" });
+      }
+    });
+
     // *********************************************//
     // // *********************************************//
     // // *********************************************//
