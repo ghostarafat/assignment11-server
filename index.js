@@ -169,6 +169,17 @@ async function run() {
     //     res.status(500).json({ message: error.message });
     //   }
     // });
+      app.get("/all-tuitions", async (req, res) => {
+      try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        const { class: className, subject, location } = req.query;
+
+        // Admin filter
+        const isAdmin = req.query.admin === "true";
+        let filter = isAdmin ? {} : { status: "approved" };
 
     // *********************************************//
     // // *********************************************//
