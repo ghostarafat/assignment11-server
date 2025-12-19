@@ -442,6 +442,102 @@ async function run() {
 
       res.send(result);
     });
+    // *******************************************
+    // ************ Tutor apis ********************
+    // *********************************************//
+
+    app.post("/applications", verifyJWT, async (req, res) => {
+      try {
+        const applicationData = req.body;
+
+        applicationData.appliedAt = new Date();
+        applicationData.applicantEmail = req.tokenEmail;
+        applicationData.status = "pending";
+
+        const result = await applicationsCollection.insertOne(applicationData);
+
+        res.send({
+          success: true,
+          insertedId: result.insertedId,
+        });
+      } catch (error) {
+        console.error("Application submit error:", error);
+        res.status(500).send({
+          success: false,
+          message: "Failed to submit application",
+        });
+      }
+    });
+
+    app.get("/applications", verifyJWT, verifyTutor, async (req, res) => {
+      const email = req.tokenEmail;
+      const result = await applicationsCollection
+        .find({ tutorEmail: email })
+        .toArray();
+      res.send(result);
+    });
+
+    app.get("/my-applications", verifyJWT, async (req, res) => {
+      const email = req.tokenEmail;
+
+      const result = await applicationsCollection
+        .find({ studentEmail: email })
+        .toArray();
+
+      res.send(result);
+    });
+    app.get("/my-applications/:id", verifyJWT, async (req, res) => {
+      const id = req.params.id;
+
+      const result = await applicationsCollection.findOne({
+        _id: new ObjectId(id),
+      });
+
+      res.send(result);
+    });
+
+    app.patch("/applications/status/:id", verifyJWT, async (req, res) => {
+      const { id } = req.params;
+      const { status } = req.body;
+
+      const result = await applicationsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        {
+          $set: { status: status },
+        }
+      );
+
+      res.send(result);
+    });
+
+    app.get(
+      "/tutor-ongoing-tuitions",
+      verifyJWT,
+      verifyTutor,
+      async (req, res) => {
+        const tutorEmail = req.tokenEmail;
+
+        const result = await applicationsCollection
+          .find({
+            tutorEmail: tutorEmail,
+            status: "approved",
+          })
+          .toArray();
+
+        res.send(result);
+      }
+    );
+    app.get("/payment-tutor", verifyJWT, verifyTutor, async (req, res) => {
+      const email = req.tokenEmail;
+      // console.log("payment  email ----------->", email);
+
+      const result = await paymentsCollection
+        .find({
+          tutorEmail: email,
+        })
+        .toArray();
+      res.send(result);
+    });
 
     // *********************************************//
     // // *********************************************//
