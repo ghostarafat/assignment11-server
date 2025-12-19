@@ -169,7 +169,7 @@ async function run() {
     //     res.status(500).json({ message: error.message });
     //   }
     // });
-      app.get("/all-tuitions", async (req, res) => {
+    app.get("/all-tuitions", async (req, res) => {
       try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
@@ -180,6 +180,35 @@ async function run() {
         // Admin filter
         const isAdmin = req.query.admin === "true";
         let filter = isAdmin ? {} : { status: "approved" };
+        // Add filters if provided
+        if (className) filter.tuitionClass = className;
+        if (subject) filter.tuitionSubject = subject;
+        if (location) filter.location = location;
+
+        const total = await tuitionCollection.countDocuments(filter);
+
+        const tuitions = await tuitionCollection
+          .find(filter)
+          .sort({ created_at: -1 })
+          .skip(skip)
+          .limit(limit)
+          .toArray();
+
+        res.send({
+          success: true,
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+          tuitions,
+        });
+      } catch (error) {
+        console.error("Error fetching tuitions:", error);
+        res
+          .status(500)
+          .send({ success: false, message: "Internal server error" });
+      }
+    });
 
     // *********************************************//
     // // *********************************************//
