@@ -1,0 +1,4 @@
+node_modules
+.env
+edu-plus-1e254-firebase-admin.json
+.vercel
