@@ -1,4 +1,6 @@
 const express = require("express");
+const jwt = require("jsonwebtoken");
+
 var cors = require("cors");
 require("dotenv").config();
 const admin = require("firebase-admin");
@@ -25,19 +27,20 @@ app.use(
 
 app.use(express.json());
 
-const verifyJWT = async (req, res, next) => {
-  const token = req?.headers?.authorization?.split(" ")[1];
-  // console.log("token-->", token);
-  if (!token) return res.status(401).send({ message: "Unauthorized Access!" });
-  try {
-    const decoded = await admin.auth().verifyIdToken(token);
-    req.tokenEmail = decoded.email;
-    // console.log("decoded ----->", decoded);
-    next();
-  } catch (err) {
-    console.log(err);
-    return res.status(401).send({ message: "Unauthorized Access!", err });
+const verifyJWT = (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) {
+    return res.status(401).send({ message: "Unauthorized" });
   }
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(403).send({ message: "Forbidden" });
+    }
+    req.tokenEmail = decoded.email;
+    req.role = decoded.role;
+    next();
+  });
 };
 
 const client = new MongoClient(process.env.MONGODB_URI, {
@@ -55,6 +58,24 @@ async function run() {
     const tuitionCollection = db.collection("tuitions");
     const applicationsCollection = db.collection("applications");
     const paymentsCollection = db.collection("payments");
+
+    // JWT create
+    app.post("/jwt", async (req, res) => {
+      const { email } = req.body;
+
+      const user = await usersCollection.findOne({ email });
+      if (!user) {
+        return res.status(401).send({ message: "Unauthorized" });
+      }
+
+      const token = jwt.sign(
+        { email: user.email, role: user.role },
+        process.env.JWT_SECRET,
+        { expiresIn: "7d" }
+      );
+
+      res.send({ token });
+    });
 
     // ******************role middlewares**************//
 
@@ -378,25 +399,30 @@ async function run() {
 
     // *********************tuitions apis status update*************//
 
-    app.patch("/tuition-status/:id", async (req, res) => {
-      const { id } = req.params;
-      const { status } = req.body;
+    app.patch(
+      "/tuition-status/:id",
+      verifyJWT,
+      verifyAdmin,
+      async (req, res) => {
+        const { id } = req.params;
+        const { status } = req.body;
 
-      try {
-        const result = await tuitionCollection.updateOne(
-          { _id: new ObjectId(id) },
-          { $set: { status: status } }
-        );
+        try {
+          const result = await tuitionCollection.updateOne(
+            { _id: new ObjectId(id) },
+            { $set: { status: status } }
+          );
 
-        if (result.modifiedCount > 0) {
-          res.send({ success: true });
-        } else {
-          res.send({ success: false, message: "No document updated" });
+          if (result.modifiedCount > 0) {
+            res.send({ success: true });
+          } else {
+            res.send({ success: false, message: "No document updated" });
+          }
+        } catch (error) {
+          res.status(500).send({ success: false, message: error.message });
         }
-      } catch (error) {
-        res.status(500).send({ success: false, message: error.message });
       }
-    });
+    );
 
     // *********************tuitions apis post*************//
     app.post("/tuitions", verifyJWT, verifyStudent, async (req, res) => {
@@ -435,7 +461,7 @@ async function run() {
     });
 
     // *********************tuitions apis delete*************//
-    app.delete("/tuitions/:id", async (req, res) => {
+    app.delete("/tuitions/:id", verifyJWT, verifyStudent, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await tuitionCollection.deleteOne(query);
@@ -451,7 +477,9 @@ async function run() {
         const applicationData = req.body;
 
         applicationData.appliedAt = new Date();
-        applicationData.applicantEmail = req.tokenEmail;
+        applicationData.tutorEmail = req.tokenEmail;
+        applicationData.studentEmail = applicationData.studentEmail;
+
         applicationData.status = "pending";
 
         const result = await applicationsCollection.insertOne(applicationData);
@@ -543,12 +571,19 @@ async function run() {
     // ************ Payments apis ********************
     // *********************************************//
 
-    app.post("/create-checkout-session", async (req, res) => {
+    app.post("/create-checkout-session", verifyJWT, async (req, res) => {
       const paymentInfo = req.body;
       console.log(paymentInfo);
 
-      const { price, tuitionId, tutorEmail, tutorName, studentEmail, subject } =
-        paymentInfo;
+      const {
+        price,
+        tuitionId,
+        applicationId,
+        tutorEmail,
+        tutorName,
+        studentEmail,
+        subject,
+      } = paymentInfo;
 
       if (!price || !tuitionId) {
         return res.status(400).send({ message: "Invalid payment data" });
@@ -574,10 +609,10 @@ async function run() {
         mode: "payment",
 
         metadata: {
+          applicationId, // <-- real application id
           tuitionId,
           tutorEmail,
           studentEmail,
-          subject,
         },
 
         success_url: `${process.env.CLIENT_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
@@ -609,19 +644,13 @@ async function run() {
         }
 
         // Extract metadata
-        const { tuitionId, tutorEmail, studentEmail, subject } =
+        const { applicationId, tuitionId, tutorEmail, studentEmail, subject } =
           session.metadata;
 
-        // Only continue if payment is successful
         if (session.payment_status === "paid") {
-          // Update tuition/application status
           const updateResult = await applicationsCollection.updateOne(
-            { _id: new ObjectId(tuitionId) },
-            {
-              $set: {
-                status: "paid",
-              },
-            }
+            { _id: new ObjectId(applicationId) },
+            { $set: { status: "approved" } }
           );
 
           // Prepare payment object
