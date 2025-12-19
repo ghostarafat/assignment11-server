@@ -376,6 +376,73 @@ async function run() {
       }
     });
 
+    // *********************tuitions apis status update*************//
+
+    app.patch("/tuition-status/:id", async (req, res) => {
+      const { id } = req.params;
+      const { status } = req.body;
+
+      try {
+        const result = await tuitionCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { status: status } }
+        );
+
+        if (result.modifiedCount > 0) {
+          res.send({ success: true });
+        } else {
+          res.send({ success: false, message: "No document updated" });
+        }
+      } catch (error) {
+        res.status(500).send({ success: false, message: error.message });
+      }
+    });
+
+    // *********************tuitions apis post*************//
+    app.post("/tuitions", verifyJWT, verifyStudent, async (req, res) => {
+      const tuitionsData = req.body;
+      tuitionsData.status = "pending";
+      tuitionsData.created_at = new Date();
+      const result = await tuitionCollection.insertOne(tuitionsData);
+      res.send(result);
+    });
+    // *********************tuitions apis get*************//
+    app.get("/tuitions", verifyJWT, verifyStudent, async (req, res) => {
+      const email = req.tokenEmail;
+      const { status } = req.query;
+
+      const query = { studentEmail: email };
+
+      if (status) {
+        query.status = status;
+      }
+
+      const result = await tuitionCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    // *********************tuitions apis update*************//
+    app.patch("/tuitions/:id", verifyJWT, verifyStudent, async (req, res) => {
+      const id = req.params.id;
+      const updatedData = req.body;
+
+      const result = await tuitionCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: updatedData }
+      );
+
+      res.send(result);
+    });
+
+    // *********************tuitions apis delete*************//
+    app.delete("/tuitions/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await tuitionCollection.deleteOne(query);
+
+      res.send(result);
+    });
+
     // *********************************************//
     // // *********************************************//
     // // *********************************************//
